@@ -20,6 +20,14 @@ uv pip install -r requirements.uv
 
 > WARNING: FlashAttention is not included in requirements. It must be installed manually if needed for other components.
 
+Before using the module, compile the Cython components by running:
+
+```bash
+python setup.py build_ext --inplace
+```
+
+This will generate the necessary compiled modules required for inference.
+
 ## Usage
 
 ```bash
@@ -66,7 +74,10 @@ After adding, you can refer to this modified amino acid in the candidate list st
 
 ## Output
 
-The output is written to a CSV file with the following columns:
+For each input `.mgf` file, the output will be saved in the same directory as the input file.
+The output filename will be the original filename with `_rnova_denovo_path.csv` appended.
+
+Each output CSV file contains the following columns: with the following columns:
 
 1. **Scan number**: The scan number from the input MGF file
 2. **De novo sequence**: The predicted peptide sequence, including any modifications
