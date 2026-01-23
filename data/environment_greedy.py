@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from utils.BasicClass import Candidate_Residue_AA
+from utils.BasicClass import Candidate_Residue_AA, Residual_AA
 from .knapsack_build import knapsack_build_vsize32, knapsack_build_vsize64, next_aa_mask_builder
 
 from math import ceil
@@ -22,14 +22,28 @@ class Environment(object):
         # there is enough space in cache tensor.
         # And fill in first seq token.
         self.candidate_ptm_aa = Candidate_Residue_AA()
-        candidate_aa = [self.candidate_ptm_aa[aa] for aa in candidate_amino_acids]
+        candidate_aa = []
+        for aa in candidate_amino_acids:
+            try:
+                candidate_aa.append(self.candidate_ptm_aa[aa])
+            except:
+                new_temp_aa = Residual_AA(aa[:aa.find('[')],
+                                          n_terminal_PTM='',
+                                          c_terminal_PTM='',
+                                          r_group_PTM=aa[aa.find('[')+1:-1],
+                                          embedding_db_index=len(self.candidate_ptm_aa)+3,
+                                          composition=None,
+                                          mass=float(aa[aa.find('[')+1:-1])+self.candidate_ptm_aa[aa[0]].mass,
+                                          full_name=aa)
+                self.candidate_ptm_aa.add_residue(aa,new_temp_aa)
+                candidate_aa.append(self.candidate_ptm_aa[aa])
+
         candidate_aa = sorted(candidate_aa)
         self.candidate_aa = torch.tensor([aa.embedding_db_index for aa in candidate_aa],device='cuda',dtype=torch.long).unsqueeze(0)
         self.basic_candidate_aa = torch.tensor([self.candidate_ptm_aa[aa.amino_acid_name].embedding_db_index if aa.amino_acid_name!='C' else self.candidate_ptm_aa['C|UniMod:4'].embedding_db_index for aa in candidate_aa],device='cuda',dtype=torch.long).unsqueeze(0)
-        self.candidate_mass = torch.tensor([aa.composition.mass for aa in candidate_aa],device='cuda',dtype=torch.float).unsqueeze(0)
-        self.candidate_mass_cpu = np.array([aa.composition.mass for aa in candidate_aa])
+        self.candidate_mass = torch.tensor([aa.mass for aa in candidate_aa],device='cuda',dtype=torch.float).unsqueeze(0)
+        self.candidate_mass_cpu = np.array([aa.mass for aa in candidate_aa])
         self.candidate_aa_num = self.candidate_aa.size(1)
-        
         self.result_seq_ntoc = torch.zeros([self.cfg.train.batch_size,self.cfg.data.peptide_max_len*20], device=self.device, dtype=torch.long)
         self.result_seq_score_ntoc = torch.zeros_like(self.result_seq_ntoc, dtype=torch.float)
         self.result_seq_cton = torch.zeros_like(self.result_seq_ntoc)
@@ -128,7 +142,6 @@ class Environment(object):
         inference_mask = torch.stack(inference_mask).to(candidate_aa.device)
         candidate_aa = candidate_aa.to(torch.float).squeeze(-1)
         candidate_aa = candidate_aa.masked_fill(~inference_mask,-float('inf'))
-
         next_aa_score, next_aa = candidate_aa.max(1,keepdim=True)
         seq = decoder_step_input['sequence_input']['candidate_aa'][0,next_aa]
         seq_mass = decoder_step_input['sequence_input']['seq_mass_forward']+decoder_step_input['sequence_input']['candidate_aa_mass'][0,next_aa]
@@ -140,7 +153,6 @@ class Environment(object):
         else:
             final_max_iter_ntoc = (self.iter_num == self.cfg.data.max_iter-1).squeeze(1)
             final_max_iter_cton = (self.iter_num == self.cfg.data.max_iter).squeeze(1)
-
         self.result_seq_ntoc[final_max_iter_ntoc] = self.result_seq_ntoc[final_max_iter_ntoc].scatter(-1,seq_pos[final_max_iter_ntoc],seq_result[final_max_iter_ntoc])
         self.result_seq_score_ntoc[final_max_iter_ntoc] = self.result_seq_score_ntoc[final_max_iter_ntoc].scatter(-1,seq_pos[final_max_iter_ntoc],next_aa_score[final_max_iter_ntoc])
         self.result_seq_cton[final_max_iter_cton] = self.result_seq_cton[final_max_iter_cton].scatter(-1,seq_pos[final_max_iter_cton],seq_result[final_max_iter_cton])
@@ -173,7 +185,6 @@ class Environment(object):
 
         result = [[] for _ in range(self.result_seq_ntoc.size(0))]
         result_score = [[] for _ in range(self.result_seq_ntoc.size(0))]
-
         for i in range(self.result_seq_ntoc.size(0)):
             result_seq_row = result_seq[i]
             result_seq_score_row = result_seq_score[i]

@@ -1,3 +1,4 @@
+import logging
 import sys
 import torch
 import numpy as np
@@ -8,11 +9,14 @@ from data import RnovaDataset, RnovaCollator, DataPrefetcher, Environment
 
 from hydra import initialize, compose
 
+logger = logging.getLogger(__name__)
+
 def read_mgf(mgf_file):
     spectra = []
     with open(mgf_file) as f:
         for line in f:
             if line.startswith('BEGIN IONS'):
+                charge = 2
                 moverz = []
                 intensity = []
             elif line.startswith('TITLE'): title = line.strip().split('=')[-1]
@@ -41,8 +45,14 @@ def read_mgf(mgf_file):
     return spectra
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+    )
     with initialize(config_path="configs", version_base=None): cfg = compose(config_name="config")
-    local_rank = 1
+    local_rank = 0
     torch.cuda.set_device(local_rank)
     model = RNovA(cfg).to(local_rank)
     model_checkpoint = torch.load('save/rnova.pt',map_location={'cuda:0': f'cuda:{local_rank}'},weights_only=True)
@@ -51,6 +61,7 @@ def main():
     mgf_files, candidate_amino_acids = sys.argv[1:-1], sys.argv[-1]
     candidate_amino_acids = candidate_amino_acids.split(';')
     for mgf_file in mgf_files:
+        logger.info("Start analysing %s", mgf_file)
         spectra = read_mgf(mgf_file)
 
         ds = RnovaDataset(cfg,spectra)
@@ -74,7 +85,7 @@ def main():
                 result_score = ';'.join(f"{s:.4f}" for s in result_score)
                 fw.write(f"{title},{result_str},{result_score}\n")
         fw.close()
-        print(f"Results saved to {mgf_file[:-4]}_rnova_denovo_seq.csv")
+        logger.info("Results saved to %s_rnova_denovo_seq.csv", mgf_file[:-4])
 
 if __name__ == "__main__":
     main()

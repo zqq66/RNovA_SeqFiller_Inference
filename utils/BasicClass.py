@@ -333,6 +333,7 @@ class Residual_AA():
     r_group_PTM: str
     embedding_db_index: int
     composition: Composition
+    mass: float
     full_name: str
     
     def __repr__(self):
@@ -400,6 +401,7 @@ class Candidate_Residue_AA():
                             r_group_PTM=r_group_PTM,
                             embedding_db_index=i,
                             composition=Composition(mol_formula)-Composition('H2O'),
+                            mass=(Composition(mol_formula)-Composition('H2O')).mass,
                             full_name=name)
             self.__candidate_residue_aa_with_ptm_int_index[i] = \
                 Residual_AA(amino_acid_name,
@@ -408,25 +410,15 @@ class Candidate_Residue_AA():
                             r_group_PTM=r_group_PTM,
                             embedding_db_index=i,
                             composition=Composition(mol_formula)-Composition('H2O'),
+                            mass=(Composition(mol_formula)-Composition('H2O')).mass,
                             full_name=name)
+            # print(self.__candidate_residue_aa_with_ptm.keys())
     
-    def add_residue(self, name: str, residue: Residual_AA):
-        """添加新的氨基酸残基及其PTM信息到字典中"""
-        self.__candidate_residue_aa_with_ptm[name] = residue
-
-    def remove_residue(self, name: str):
-        """从字典中删除指定的氨基酸残基"""
-        if name in self.__candidate_residue_aa_with_ptm:
-            del self.__candidate_residue_aa_with_ptm[name]
-
-    def update_residue(self, name: str, residue: Residual_AA):
-        """更新字典中的氨基酸残基信息"""
-        self.__candidate_residue_aa_with_ptm[name] = residue
-
     @classmethod
     def add_residue(cls, name: str, residue: Residual_AA):
         """添加新的氨基酸残基及其PTM信息到字典中"""
         cls.__candidate_residue_aa_with_ptm[name] = residue
+        cls.__candidate_residue_aa_with_ptm_int_index[len(cls.__candidate_residue_aa_with_ptm_int_index)+3] = residue
 
     @classmethod
     def remove_residue(cls, name: str):
@@ -507,7 +499,6 @@ class ResidueOnlyPeptide():
 
         else:
             self.sequence_residue_seq = [[aa,'','',''] for aa in seq]
-
             if mods:
                 if isinstance(mods, str):
                     for mod in mods.split(';'):
@@ -529,19 +520,30 @@ class ResidueOnlyPeptide():
                             self.sequence_residue_seq[mod_pos_int][1] = mod[mod.find('|')+1:]
                 else:
                     raise NotImplementedError
-        
         self.sequence_residue_seq = ['|'.join(aa_ptm_list).strip('|') for aa_ptm_list in self.sequence_residue_seq]
+        for aa in self.sequence_residue_seq:
+            if aa not in self.__aa_residue.keys():
+                new_temp_aa = Residual_AA(aa[:aa.find('|')],
+                                          n_terminal_PTM='',
+                                          c_terminal_PTM='',
+                                          r_group_PTM=aa[aa.find('|')+1:-1],
+                                          embedding_db_index=len(self.__aa_residue)+3,
+                                          composition=None,
+                                          mass=float(aa[aa.find('|')+1:-1])+self.__aa_residue[aa[0]].mass,
+                                          full_name=aa)
+                self.__aa_residue.add_residue(aa,new_temp_aa)
         self.sequence_residue = [self.__aa_residue[aa_seq] for aa_seq in self.sequence_residue_seq]
-        self.sequence_residue_compositions = [aa_residual.composition for aa_residual in self.sequence_residue]
-        self.sequence_residue_mass = np.array([aa_residual_composition.mass for aa_residual_composition in self.sequence_residue_compositions])
-        self.prefix_compositions = np.cumsum(self.sequence_residue_compositions).tolist()
-        self.suffix_compositions = np.cumsum(self.sequence_residue_compositions[::-1]).tolist()
-        self.prefix_mass = np.array([aa_residual_composition.mass for aa_residual_composition in self.prefix_compositions])
-        self.suffix_mass = np.array([aa_residual_composition.mass for aa_residual_composition in self.suffix_compositions])
-        
+        # self.sequence_residue_compositions = [aa_residual.composition for aa_residual in self.sequence_residue]
+        self.sequence_residue_mass = np.array([aa_residual_composition.mass for aa_residual_composition in self.sequence_residue])
+        # self.prefix_compositions = np.cumsum(self.sequence_residue_compositions).tolist()
+        # self.suffix_compositions = np.cumsum(self.sequence_residue_compositions[::-1]).tolist()
+        # self.prefix_mass = np.array([aa_residual_composition.mass for aa_residual_composition in self.prefix_compositions])
+        # self.suffix_mass = np.array([aa_residual_composition.mass for aa_residual_composition in self.suffix_compositions])
+        self.prefix_mass = np.cumsum(self.sequence_residue_mass)
+        self.suffix_mass = np.cumsum(self.sequence_residue_mass[::-1])
         self.seq = self.sequence_residue_seq
-        self.total_residue_composition = sum(self.sequence_residue_compositions)
-        self.total_residue_mass = self.total_residue_composition.mass
+        # self.total_residue_composition = sum(self.sequence_residue_compositions)
+        self.total_residue_mass = sum(self.sequence_residue_mass)
 
     def __repr__(self):
         return str(self.seq)
