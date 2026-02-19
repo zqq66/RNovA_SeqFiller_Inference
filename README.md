@@ -51,7 +51,13 @@ python Inference_Seqquence.py input1.mgf input2.mgf ... inputN.mgf "A;C|UniMod:4
   This specifies canonical amino acids plus modifications on C (carbamidomethylation, UniMod:4) and M (oxidation, UniMod:35).
 
 ## Custom PTMs
+RNovA supports two methods for providing custom modifications to SeqFiller:
 
+# Option 1: Inline mass format (at inference time)
+When running SeqFiller inference, user-defined PTMs can be specified directly in the candidate list string using the format <SingleLetterAminoAcid><float>, where the float represents the mass of the modified residue (not the delta mass). For example, K<170.106> specifies a lysine-based residue with total residue mass 170.106 Da. This allows on-the-fly customization without modifying any files.
+
+# Option 2: Permanent registration (recommended for repeated use)
+To permanently register a custom modification, add an entry to utils/AA_PTM_Mol_Formula using the format:
 To support additional PTMs, edit the file:
 
 ```
